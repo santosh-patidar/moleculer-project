@@ -1,9 +1,11 @@
 "use strict";
 const _ = require("lodash");
+require("dotenv").config();
 const ApiGateway = require("moleculer-web");
 const { UnAuthorizedError } = ApiGateway.Errors;
 const user = require("./user.service");
-require("dotenv").config();
+const nextuser = require('./doc.service');
+const routes = require('../routes/user.Routes');
 
 /**
  * @typedef {import('moleculer').Context} Context Moleculer's Context
@@ -12,6 +14,7 @@ require("dotenv").config();
  */
 
 module.exports = {
+
 	name: "api",
 	mixins: [ApiGateway],
 
@@ -50,20 +53,8 @@ module.exports = {
 				// The gateway will dynamically build the full routes from service schema.
 				autoAliases: false,
 
-				aliases: {
-					//User Routes
-					"POST /users/": "users.create",
-					"POST /users/login": "users.login",
+				aliases: routes,
 
-					"GET /users/": "users.userlist",
-					"GET /users/finduser": "users.findUser",
-
-					"PUT /users/updatuser": "users.details",
-					"DELETE /users/delete": "users.deleteUser",
-
-					"POST /users/change": "users.chnngepassword",
-					"DELETE /users/all": "users.deleteAllData"
-				},
 
 				/** 
 				 * Before call hook. You can check the request.
@@ -130,6 +121,7 @@ module.exports = {
 	},
 
 	methods: {
+
 		/**
 		* Authorize the request. Check that the authenticated user has right to access the resource.
 		*
@@ -161,9 +153,9 @@ module.exports = {
 									// Reduce employee fields (it will be transferred to other nodes)
 									ctx.meta.user = _.pick(user, ["id"]);
 									ctx.meta.token = token;
-									console.log("user here ====", token);
+									// console.log("user here ====", token);
 								}
-								console.log("user here token", user);
+								// console.log("user here token", user);
 								return user;
 							})
 							.catch((err) => {

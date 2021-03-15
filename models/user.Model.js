@@ -16,7 +16,6 @@ const users = {
         },
         user_name: {
             type: Sequelize.STRING,
-            // unique: true,
             allowNull: true
         },
         password: {
@@ -24,7 +23,6 @@ const users = {
         },
         phone: {
             type: Sequelize.STRING,
-            // unique: true,
             defaultValue: null
         },
         status: {

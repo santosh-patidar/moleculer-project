@@ -1,5 +1,4 @@
-
-
+"use strict";
 const DbConnect = require("../mixins/db.mixin");
 const DbService = require("moleculer-db");
 const { MoleculerClientError } = require("moleculer").Errors;
@@ -8,7 +7,6 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const users = require("../models/user.Model");
 require("dotenv").config();
-const { Op } = require("sequelize");
 
 /**
 * @typedef {import('moleculer').Context} Context Moleculer's Context
@@ -19,9 +17,11 @@ module.exports = {
     mixins: [DbService],
     adapter: DbConnect(),
     model: users,
+
     settings: {
         /** Secret for JWT */
-        JWT_SECRET: process.env.JWT_SECRET || "jwt-secret",
+        JWT_SECRET: process.env.JWT_SECRET || "jwtsecret",
+
         fields: [
             "id",
             "user_name",
@@ -50,12 +50,14 @@ module.exports = {
          * @returns {Object} Created entity & token
          */
         create: {
+
             params: {
                 user_name: { type: "string" },
                 email: { type: "email" },
                 password: { type: "string", min: 1 },
                 phone: { type: "string" }
             },
+
             async handler(ctx) {
                 let entity = ctx.params;
                 if (entity.email) {
@@ -89,8 +91,8 @@ module.exports = {
                     where: { email: email, deleted_at: null },
                 })
                 )
-                    .then((user) => {
-                        if (!user)
+                    .then((Userdata) => {
+                        if (!Userdata)
                             return this.Promise.reject(
                                 new MoleculerClientError(
                                     "Email or password is invalid!",
@@ -99,7 +101,7 @@ module.exports = {
                                     [{ field: "email", message: "is not found" },]
                                 ));
                         return bcrypt
-                            .compare(password, user.password)
+                            .compare(password, Userdata.password)
                             .then((res) => {
                                 if (!res)
                                     return Promise.reject(
@@ -110,26 +112,41 @@ module.exports = {
                                             [{ field: "email", message: "is not found", },]
                                         )
                                     );
-                                return this.transformDocuments(ctx, {}, user);
+                                return this.transformDocuments(ctx, {}, Userdata);
                             });
                     })
-                    .then((user) => this.transformEntity(user, true, ctx.meta.token));
+                    .then((Userdata) => this.transformEntity(Userdata, true, ctx.meta.token));
             },
         },
 
         //""""FINDALL USER DETAILS""""
         userlist: {
+            auth: "required",
             cache: false,
-            async handler(ctx) {
+            params: {},
+            async handler(ctx, user) {
+                let entity = ctx.params;
+                const result = await ctx.call("nextuser.load", {
+                    user_id: entity.user_id,
+                });
+
                 const finddata = await this.adapter.find({ query: { deleted_at: null } }, {
                     entity: ["id", "email", "user_name", "password", "phone", "createdAt", "updatedAt"]
                 });
-                const user = await this.transformDocuments(ctx, {}, finddata);
-                return { message: "data found..", user }
+                // const data = await this.transformDocuments(ctx, {}, finddata)
+                // const user1 = await this.tranformGenresResult(ctx, data);
+                // console.log(result, "******");
+                // finddata.userinfo = {}
+                // finddata.userinfo = result
+                let data = {
+                    finddata: finddata,
+                    result: result
+                }
+                return { message: "data found..", data }
             }
         },
 
-        // """"DELETE USER""""
+        // """"DELETE USER""""  
         deleteUser: {
             params: {
                 id: { type: "string" }
@@ -154,7 +171,9 @@ module.exports = {
                                 [{ fields: "Id==> " + entity.id, message: "Is not found" },]
                             )
                             );
-                        return this.transformDocuments(ctx, {}, getdata)
+                        return {
+                            message: "Data deleted succesfully...!"
+                        }
                     })
             }
         },
@@ -162,20 +181,45 @@ module.exports = {
         //""""FindOne User """"
         findUser: {
             auth: "require",
-            params: {
-                id: {
-                    type: "string",
-                },
-            },
+            params: {},
             async handler(ctx) {
-                const { id } = ctx.params;
-                // const getdata = await this.getById(ctx.params.id);
-                let entity = ctx.params
 
-                const getdata = await this.adapter.findOne({
-                    where: { id: entity.id, deleted_at: null },
-                })
-                if (!getdata)
+                let entity = ctx.meta.user.id;
+                const Data = []
+                const result = await ctx.call("nextuser.load", {
+                    user_id: entity.user_id, deleted_at: null,
+                    attributes: ['user_id', 'location', 'task']
+                });
+                if (result) {
+                    for (let userLIst of result) {
+                        const getdata = await this.adapter.find({
+                            query: { id: userLIst.user_id, deleted_at: null },
+                            attributes: [
+                                "id",
+                                "user_name",
+                                "email",
+                                "password",
+                                "phone",
+                                "createdAt",
+                                "updatedAt",
+                            ]
+                        });
+                        console.log(getdata.id);
+                        const data = {
+
+                            create_data_LENGTH: getdata.length,
+                            User_info: getdata,
+                            user_id: userLIst.user_id,
+                            location: userLIst.loaction,
+                            task: userLIst.task,
+
+                        }
+                        Data.push(data)
+
+                    }
+                    return { message: "Data found...!", Data }
+                }
+                else {
                     return this.Promise.reject(
                         new MoleculerClientError(
                             "User Not Exist..!",
@@ -183,8 +227,8 @@ module.exports = {
                             "Id not found",
                             [{ field: "id=> " + entity.id, message: "is not found", },]
                         ));
-                const user = await this.transformDocuments(ctx, {}, getdata);
-                return { message: "Data found...!", user }
+                    // const user = await this.transformDocuments(ctx, {}, getdata);
+                }
             }
         },
 
@@ -255,14 +299,11 @@ module.exports = {
                         if (password == confirmpassword) {
                             const hash = await bcrypt.hashSync(password, 10);
                             console.log(hash);
-                            // var data = { password: hash };
-                            // console.log(data);
                             var datapass = this.adapter.updateById(entity.id, {
                                 $set: {
                                     password: hash
                                 }
                             });
-                            // console.log(data);
                         }
                         if (!datapass) {
                             return this.Promise.reject(
@@ -278,7 +319,6 @@ module.exports = {
                         else {
                             return { message: "password change Succesfully..." + " Your Change Password is  " + entity.password }
                         }
-
                     } else {
                         return this.Promise.reject(
                             new MoleculerClientError(
@@ -319,7 +359,6 @@ module.exports = {
             }
         },
 
-
         /**
         * Get user by JWT token (for API GW authentication)
         *
@@ -340,14 +379,15 @@ module.exports = {
                 return new this.Promise((resolve, reject) => {
                     jwt.verify(
                         ctx.params.token,
-                        this.settings.JWT_SECRET,
+                        process.env.JWT_SECRET,
                         (err, decoded) => {
                             if (err) return reject(err);
                             resolve(decoded);
                         }
                     );
                 }).then((decoded) => {
-                    console.log("user err", decoded.id);
+                    // console.log("user err", decoded.id);
+                    // console.log("****************", decoded.id);
                     if (decoded.id) return this.getById(decoded.id);
                 });
             },
@@ -375,7 +415,7 @@ module.exports = {
                     password: user.password,
                     exp: Math.floor(exp.getTime() / 1000),
                 },
-                this.settings.JWT_SECRET
+                process.env.JWT_SECRET,
             );
         },
 
@@ -413,7 +453,29 @@ module.exports = {
             }
             return { profile: user };
         },
+
+        // async tranformGenresResult(ctx, entities) {
+        //     if (Array.isArray(entities)) {
+        //         const result = await this.Promise.all(
+        //             entities.map((item) => this.transformEntity(ctx, item))
+        //         );
+        //         return { result };
+        //     } else {
+        //         const result = await this.transformEntity(ctx, entities);
+        //         return { result };
+        //     }
+        // },
+        // async transformEntity(ctx, entity) {
+        //     if (!entity) return this.Promise.resolve();
+        //     const result = await ctx.call("nextuser.load", {
+        //         user_id: entity.user_id,
+        //     });
+        //     entity.genersInfo = result;
+        //     return entity;
+        // },
     },
+
+
 
     /**
     * Fired after database connection establishing.
